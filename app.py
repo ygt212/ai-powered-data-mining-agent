@@ -109,7 +109,8 @@ TRANSLATIONS = {
         "step_4": "Yorumla: İş dünyası içgörülerini okuyun.",
         "uploader_text": "Dosyayı buraya sürükleyip bırakın",
         "uploader_limit_text": "Dosya limiti: 200MB • CSV, XLSX",
-        "uploader_button_text": "Dosyalara Gözat"
+        "uploader_button_text": "Dosyalara Gözat",
+        "footer_text": "Geliştirici: Talha Yiğit Yıldırım | © 2025 Tüm Hakları Saklıdır"
     },
     "en": {
         "page_title": "AI-Powered Data Mining Agent",
@@ -194,7 +195,8 @@ TRANSLATIONS = {
         "step_4": "Interpret: Read business insights.",
         "uploader_text": "Drag and drop file here",
         "uploader_limit_text": "Limit 200MB per file • CSV, XLSX",
-        "uploader_button_text": "Browse files"
+        "uploader_button_text": "Browse files",
+        "footer_text": "Developed by Talha Yiğit Yıldırım | © 2025 All Rights Reserved"
     }
 }
 
@@ -376,6 +378,26 @@ def local_css():
         /* Dataframe/Table Text */
         [data-testid="stDataFrame"] {
             color: #FAFAFA !important;
+        }
+
+        /* Footer */
+         .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: #0E1117;
+            color: #c5c5c5 !important;
+            text-align: center;
+            padding: 10px;
+            font-size: 12px;
+            border-top: 1px solid #3d4044;
+            z-index: 1000;
+        }
+        
+        /* Add padding to the bottom of the main block so content isn't hidden behind the footer */
+        .block-container {
+            padding-bottom: 50px;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -885,6 +907,9 @@ def main():
             3. **{t['step_3']}**
             4. **{t['step_4']}**
             """)
+
+    # --- Footer ---
+    st.markdown(f'<div class="footer">{t["footer_text"]}</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
