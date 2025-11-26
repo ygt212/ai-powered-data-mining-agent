@@ -678,6 +678,16 @@ def main():
                                 X = cleaned_df[feature_cols]
                                 y = cleaned_df[target_col]
                                 
+                                # High Cardinality Guardrail for Classification
+                                dropped_cols = []
+                                for col in X.columns:
+                                    if not pd.api.types.is_numeric_dtype(X[col]) and X[col].nunique() > 50:
+                                        dropped_cols.append(col)
+                                
+                                if dropped_cols:
+                                    X = X.drop(columns=dropped_cols)
+                                    st.warning(f"High cardinality features dropped (>50 unique values): {', '.join(dropped_cols)}")
+                                
                                 # Drop rows where target is NaN
                                 if y.isna().any():
                                     st.warning(t["warning_target_nan"].format(target_col, y.isna().sum()))
@@ -800,6 +810,16 @@ def main():
                                         # If edges are not unique (e.g. many 0s), use cut or just convert to string
                                         mining_df[col] = mining_df[col].astype(str)
                             
+                            # High Cardinality Guardrail for Association Rules
+                            dropped_cols_apriori = []
+                            for col in mining_df.columns:
+                                if mining_df[col].nunique() > 50:
+                                    dropped_cols_apriori.append(col)
+                            
+                            if dropped_cols_apriori:
+                                mining_df = mining_df.drop(columns=dropped_cols_apriori)
+                                st.warning(f"High cardinality columns dropped (>50 unique values): {', '.join(dropped_cols_apriori)}")
+
                             # 2. One-Hot Encoding
                             st.write(t["info_onehot"])
                             bool_df = pd.get_dummies(mining_df)
