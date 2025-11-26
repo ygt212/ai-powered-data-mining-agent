@@ -661,6 +661,7 @@ def main():
                 with st.container(border=True):
                     st.write(t["classification_running"])
                     
+ 
                     # Target Selection
                     target_col = st.selectbox(t["target_select"], cleaned_df.columns, index=len(cleaned_df.columns)-1)
                     
@@ -789,15 +790,41 @@ def main():
                 with st.container(border=True):
                     st.write(t["apriori_running"])
                     
+                    # 1. Column Selector
+                    all_cols = cleaned_df.columns.tolist()
+                    default_cols = all_cols[:5] if len(all_cols) >= 5 else all_cols
+                    
+                    selected_cols = st.multiselect(
+                        "Analize Dahil Edilecek Sütunları Seçin / Select Columns for Analysis",
+                        all_cols,
+                        default=default_cols
+                    )
+                    
+                    if not selected_cols:
+                        st.error("Lütfen en az bir sütun seçin. / Please select at least one column.")
+                        st.stop()
+                    
                     bin_count = st.slider(t["bin_count_label"], 2, 5, 3)
-                    min_support = st.slider(t["min_support_slider"], 0.001, 0.5, 0.05, 0.001)
+                    # Adjusted default support to 0.1 (10%) to prevent crashes
+                    min_support = st.slider(t["min_support_slider"], 0.001, 0.5, 0.1, 0.001)
                     
                     if st.button(t["run_apriori_button"], type="primary"):
                         try:
-                            # 1. Discretize Numeric Columns
-                            # Create a copy to avoid mutating session state directly if we re-run
-                            mining_df = cleaned_df.copy()
+                            # Create mining_df using ONLY selected columns
+                            mining_df = cleaned_df[selected_cols].copy()
                             
+                            # High Cardinality Guardrail (Applied BEFORE binning to save resources)
+                            dropped_cols_apriori = []
+                            for col in mining_df.columns:
+                                # Check cardinality on the subset
+                                if mining_df[col].nunique() > 50:
+                                    dropped_cols_apriori.append(col)
+                            
+                            if dropped_cols_apriori:
+                                mining_df = mining_df.drop(columns=dropped_cols_apriori)
+                                st.warning(f"High cardinality columns dropped (>50 unique values): {', '.join(dropped_cols_apriori)}")
+                            
+                            # 2. Discretize Numeric Columns
                             numeric_cols = mining_df.select_dtypes(include=['number']).columns
                             if len(numeric_cols) > 0:
                                 st.info(t["info_binning"].format(len(numeric_cols), bin_count))
@@ -810,17 +837,16 @@ def main():
                                         # If edges are not unique (e.g. many 0s), use cut or just convert to string
                                         mining_df[col] = mining_df[col].astype(str)
                             
-                            # High Cardinality Guardrail for Association Rules
-                            dropped_cols_apriori = []
-                            for col in mining_df.columns:
-                                if mining_df[col].nunique() > 50:
-                                    dropped_cols_apriori.append(col)
+                            # 3. Circuit Breaker (Safety Valve)
+                            # Calculate expected number of columns after One-Hot Encoding
+                            estimated_cols = sum(mining_df[col].nunique() for col in mining_df.columns)
                             
-                            if dropped_cols_apriori:
-                                mining_df = mining_df.drop(columns=dropped_cols_apriori)
-                                st.warning(f"High cardinality columns dropped (>50 unique values): {', '.join(dropped_cols_apriori)}")
+                            if estimated_cols > 100:
+                                st.error(f"İşlem çok karmaşık! Seçilen sütunlar toplamda {estimated_cols} farklı kategori oluşturuyor. Lütfen daha az sütun seçin veya 'Sayısal Kategorizasyon' ayarını düşürün.")
+                                # Stop execution to prevent OOM
+                                st.stop()
 
-                            # 2. One-Hot Encoding
+                            # 4. One-Hot Encoding
                             st.write(t["info_onehot"])
                             bool_df = pd.get_dummies(mining_df)
                             bool_df = bool_df.astype(bool)
