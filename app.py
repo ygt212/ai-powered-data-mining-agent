@@ -5,6 +5,8 @@ from io import StringIO
 import plotly.express as px
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.decomposition import PCA
@@ -109,7 +111,9 @@ TRANSLATIONS = {
         "step_4": "Yorumla: İş dünyası içgörülerini okuyun.",
         "uploader_text": "Dosyayı buraya sürükleyip bırakın",
         "uploader_limit_text": "Dosya limiti: 200MB • CSV, XLSX",
-        "uploader_button_text": "Dosyalara Gözat"
+        "uploader_button_text": "Dosyalara Gözat",
+        "algo_select_label": "Algoritma Seçin",
+        "algo_options": ["Random Forest", "Decision Tree (C4.5)"]
     },
     "en": {
         "page_title": "AI-Powered Data Mining Agent",
@@ -194,7 +198,9 @@ TRANSLATIONS = {
         "step_4": "Interpret: Read business insights.",
         "uploader_text": "Drag and drop file here",
         "uploader_limit_text": "Limit 200MB per file • CSV, XLSX",
-        "uploader_button_text": "Browse files"
+        "uploader_button_text": "Browse files",
+        "algo_select_label": "Select Algorithm",
+        "algo_options": ["Random Forest", "Decision Tree (C4.5)"]
     }
 }
 
@@ -475,6 +481,7 @@ def main():
         st.session_state.class_report = None
         st.session_state.class_fig = None
         st.session_state.class_cm_fig = None
+        st.session_state.tree_fig = None
         # Clear Apriori State
         st.session_state.apriori_rules = None
         st.session_state.apriori_fig = None
@@ -521,6 +528,7 @@ def main():
                     st.session_state.class_report = None
                     st.session_state.class_fig = None
                     st.session_state.class_cm_fig = None
+                    st.session_state.tree_fig = None
                     st.session_state.apriori_rules = None
                     st.session_state.apriori_fig = None
                     st.success(t["success_processed"])
@@ -671,6 +679,9 @@ def main():
                         all_cols.remove(target_col)
                     feature_cols = st.multiselect(t["feature_select"], all_cols, default=all_cols)
                     
+                    # Algorithm Selection
+                    algorithm_choice = st.selectbox(t["algo_select_label"], t["algo_options"])
+
                     if st.button(t["train_button"], type="primary"):
                         if not feature_cols:
                             st.error(t["error_no_feature"])
@@ -719,8 +730,21 @@ def main():
                                 else:
                                     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
                                     
-                                    clf = RandomForestClassifier(random_state=42)
+                                    if algorithm_choice == "Random Forest":
+                                        clf = RandomForestClassifier(random_state=42)
+                                        st.session_state.tree_fig = None
+                                    else:
+                                        # Decision Tree (C4.5 Simulation)
+                                        clf = DecisionTreeClassifier(criterion='entropy', random_state=42)
+                                    
                                     clf.fit(X_train, y_train)
+
+                                    # Plot Tree if Decision Tree
+                                    if algorithm_choice != "Random Forest":
+                                        fig_tree, ax = plt.subplots(figsize=(20, 10))
+                                        plot_tree(clf, filled=True, feature_names=X.columns, class_names=le.classes_.astype(str), max_depth=3, ax=ax)
+                                        st.session_state.tree_fig = fig_tree
+
                                     y_pred = clf.predict(X_test)
                                     
                                     acc = accuracy_score(y_test, y_pred)
@@ -761,7 +785,7 @@ def main():
                                     st.session_state.class_fig = fig
                                     st.session_state.class_cm_fig = fig_cm
                                     
-                                    results_summary = f"Random Forest Classification on target '{target_col}'.\n"
+                                    results_summary = f"{algorithm_choice} on target '{target_col}'.\n"
                                     results_summary += f"Accuracy: {acc:.2f}\n"
                                     results_summary += f"Classification Report:\n{report_text}"
                                     st.session_state.results_summary = results_summary
@@ -785,6 +809,10 @@ def main():
                         with col_chart2:
                             if st.session_state.class_fig:
                                 st.plotly_chart(st.session_state.class_fig, use_container_width=True)
+                        
+                        if "tree_fig" in st.session_state and st.session_state.tree_fig:
+                            st.write("### Decision Tree Visualization (Max Depth: 3)")
+                            st.pyplot(st.session_state.tree_fig)
 
             elif selected_technique_key == "Association Rule Mining":
                 with st.container(border=True):
