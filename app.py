@@ -16,6 +16,7 @@ from mlxtend.frequent_patterns import apriori, association_rules
 import re
 import time
 import numpy as np
+import gc
 
 # --- Constants ---
 try:
@@ -113,7 +114,10 @@ TRANSLATIONS = {
         "uploader_limit_text": "Dosya limiti: 200MB • CSV, XLSX",
         "uploader_button_text": "Dosyalara Gözat",
         "algo_select_label": "Algoritma Seçin",
-        "algo_options": ["Random Forest", "Decision Tree (C4.5)"]
+        "algo_options": ["Random Forest", "Decision Tree (C4.5)"],
+        "tree_viz_title": "Karar Ağacı Görselleştirmesi (Maks. Derinlik: 3)",
+        "warning_large_data": "⚠️ Büyük veri tespit edildi! Performans için veri seti rastgele 50.000 satıra indirgendi. (Analiz doğruluğu korunmuştur).",
+        "warning_apriori_sample": "⚠️ Birliktelik Kuralları için veri performansı korumak adına 10.000 satıra indirgendi."
     },
     "en": {
         "page_title": "AI-Powered Data Mining Agent",
@@ -198,6 +202,9 @@ TRANSLATIONS = {
         "step_4": "Interpret: Read business insights.",
         "uploader_text": "Drag and drop file here",
         "uploader_limit_text": "Limit 200MB per file • CSV, XLSX",
+        "tree_viz_title": "Decision Tree Visualization (Max Depth: 3)",
+        "warning_large_data": "⚠️ Large data detected! Dataset sampled to 50,000 rows for performance. (Analysis accuracy preserved).",
+        "warning_apriori_sample": "⚠️ Data sampled to 10,000 rows for Association Rules to maintain performance.",
         "uploader_button_text": "Browse files",
         "algo_select_label": "Select Algorithm",
         "algo_options": ["Random Forest", "Decision Tree (C4.5)"]
@@ -244,6 +251,38 @@ def get_gemini_response(prompt):
             return None
     return None
 
+def optimize_memory(df):
+    """Downcast numeric types and convert objects to categories to save memory."""
+    for col in df.columns:
+        col_type = df[col].dtype
+        
+        if col_type != object:
+            c_min = df[col].min()
+            c_max = df[col].max()
+            if str(col_type)[:3] == 'int':
+                if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
+                    df[col] = df[col].astype(np.int8)
+                elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
+                    df[col] = df[col].astype(np.int16)
+                elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
+                    df[col] = df[col].astype(np.int32)
+                elif c_min > np.iinfo(np.int64).min and c_max < np.iinfo(np.int64).max:
+                    df[col] = df[col].astype(np.int64)  
+            else:
+                if c_min > np.finfo(np.float16).min and c_max < np.finfo(np.float16).max:
+                    df[col] = df[col].astype(np.float16)
+                elif c_min > np.finfo(np.float32).min and c_max < np.finfo(np.float32).max:
+                    df[col] = df[col].astype(np.float32)
+                else:
+                    df[col] = df[col].astype(np.float64)
+        else:
+            # Check cardinality
+            num_unique = df[col].nunique()
+            num_total = len(df[col])
+            if num_unique / num_total < 0.5:
+                df[col] = df[col].astype('category')
+    return df
+
 def extract_code_from_text(text):
     """Extracts Python code from Gemini's response."""
     match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
@@ -265,6 +304,11 @@ def preprocess_with_gemini(df, technique, lang_code):
     
     # System prompt can remain largely English as it's for the model's internal logic
     system_prompt = f"""
+    CRITICAL INSTRUCTION:
+    CRITICAL RULE: You MUST handle missing values (NaN, None) and infinite values (inf) BEFORE attempting any data type conversions (like astype(int)).
+    Step 1: Fill NaNs (impute with 0, mean, or mode) or drop rows.
+    Step 2: ONLY AFTER filling NaNs, proceed with type conversions or encoding.
+
     You are an Expert Python Data Engineer. 
     The user wants to perform '{technique}' on a dataset.
     
@@ -496,6 +540,14 @@ def main():
                 df = pd.read_csv(uploaded_file)
             else:
                 df = pd.read_excel(uploaded_file)
+            
+            # Smart Sampling & Optimization
+            if len(df) > 50000:
+                df = df.sample(n=50000, random_state=42)
+                st.warning(t["warning_large_data"])
+            
+            df = optimize_memory(df)
+            
         except Exception as e:
             st.error(t["error_file_upload"].format(e))
             return
@@ -531,6 +583,7 @@ def main():
                     st.session_state.tree_fig = None
                     st.session_state.apriori_rules = None
                     st.session_state.apriori_fig = None
+                    gc.collect()
                     st.success(t["success_processed"])
 
             if st.session_state.cleaned_df is not None:
@@ -741,8 +794,8 @@ def main():
 
                                     # Plot Tree if Decision Tree
                                     if algorithm_choice != "Random Forest":
-                                        fig_tree, ax = plt.subplots(figsize=(20, 10))
-                                        plot_tree(clf, filled=True, feature_names=X.columns, class_names=le.classes_.astype(str), max_depth=3, ax=ax)
+                                        fig_tree, ax = plt.subplots(figsize=(25, 12))
+                                        plot_tree(clf, filled=True, feature_names=X.columns, class_names=le.classes_.astype(str), max_depth=3, ax=ax, rounded=True, fontsize=10)
                                         st.session_state.tree_fig = fig_tree
 
                                     y_pred = clf.predict(X_test)
@@ -811,7 +864,7 @@ def main():
                                 st.plotly_chart(st.session_state.class_fig, use_container_width=True)
                         
                         if "tree_fig" in st.session_state and st.session_state.tree_fig:
-                            st.write("### Decision Tree Visualization (Max Depth: 3)")
+                            st.subheader(t["tree_viz_title"])
                             st.pyplot(st.session_state.tree_fig)
 
             elif selected_technique_key == "Association Rule Mining":
@@ -840,6 +893,11 @@ def main():
                         try:
                             # Create mining_df using ONLY selected columns
                             mining_df = cleaned_df[selected_cols].copy()
+                            
+                            # Safety Limit for Apriori
+                            if len(mining_df) > 10000:
+                                mining_df = mining_df.sample(n=10000, random_state=42)
+                                st.warning(t["warning_apriori_sample"])
                             
                             # High Cardinality Guardrail (Applied BEFORE binning to save resources)
                             dropped_cols_apriori = []
